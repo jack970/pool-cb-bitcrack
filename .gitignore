@@ -1,3 +1,4 @@
 env/
 clBitCrack.exe
 *.txt
+___pycache__
