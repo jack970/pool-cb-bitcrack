@@ -4,7 +4,7 @@ import time
 import os
 import sys
 import select
-from btc_utils import validate_private_key
+from btc_utils import validate_private_key, is_balance
 
 API_URL = "https://bitcoinflix.replit.app/api/big_block"
 POOL_TOKEN = "318630e6a68b27fbaf6e28182a69872bb37635c1f1956e5e339e62d06d93daa9"
@@ -85,10 +85,9 @@ def run_program(start, end):
                 print(f"Chaves privadas encontradas: {count_private_keys()}")
                 process.terminate()
                 break
-            time.sleep(10)
+            time.sleep(1)
         
         process.wait()
-
 
     except subprocess.CalledProcessError as e:
         print(f"Erro ao executar o programa: {e}")
@@ -143,13 +142,17 @@ def process_out_file(out_file="out.txt", in_file="in.txt", additional_address=AD
         current_address = None
         for line in file:
             line.strip()
-            current_address = line.split(" ")[0].strip()  # Obtém o address key
-            private_key = line.split(" ")[1].strip()
+            line_split = line.split(" ")
+            current_address = line_split[0].strip()  # Obtém o address key
+            private_key = line_split[1].strip()
 
             private_key_pad = pad_private_key(private_key)  # Obtém a private key
 
             validate_addr = validate_private_key(private_key, current_address)
             if not validate_addr:
+                return True
+            
+            if is_balance(current_address, private_key_pad):
                 return True
 
             # Verificar se a chave privada pertence a um dos endereços
