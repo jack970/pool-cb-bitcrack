@@ -3,6 +3,8 @@ import subprocess
 import time
 import os
 import sys
+import select
+from btc_utils import validate_private_key
 
 API_URL = "https://bitcoinflix.replit.app/api/big_block"
 POOL_TOKEN = "318630e6a68b27fbaf6e28182a69872bb37635c1f1956e5e339e62d06d93daa9"
@@ -37,10 +39,9 @@ def save_addresses_to_file(addresses, additional_address, filename="in.txt"):
 def count_private_keys(out_file='out.txt'):
     """ Conta quantas linhas (chaves privadas) existem no arquivo. """
     try:
-        count = 0
         with open(out_file, "r") as file:
             return len(file.readlines()) 
-        return count
+        
     except FileNotFoundError:
         return 0  # Retorna 0 se o arquivo ainda não existir
 
@@ -48,21 +49,50 @@ def count_private_keys(out_file='out.txt'):
 def run_program(start, end):
     keyspace = f"{start}"
     command = [
-        ".\\clBitCrack.exe",
+        "clBitCrack",
+        "--keyspace", keyspace,
         "-i", "in.txt",
         "-o", "out.txt",
         "-t", "256",
-        "-b", "512",
-        "-p", "448",
-        "--keyspace", keyspace
+        "-b", "128",
+        "-p", "1024",
+        "-f"
     ]
     try:
         print(f"Executando: {' '.join(command)}...")
           # Inicia o processo em segundo plano
-        process = subprocess.run(command, shell=True)
+        process = subprocess.Popen(command, 
+                                   stdout=subprocess.PIPE, 
+                                   stderr=subprocess.PIPE, 
+                                   text=True,
+                                   bufsize=1)
+        start_time = time.time()
+
+        while process.poll() is None:
+            count_keys = count_private_keys()
+            elapsed_time = time.time() - start_time
+            minutes, seconds = divmod(elapsed_time, 60)
+            time_formatted = f"{int(minutes)}m {seconds:.2f}s" if minutes > 0 else f"{seconds:.2f}s"
+
+            ready_to_read, _, _ = select.select([process.stdout], [], [], 0.1)
+            if process.stdout in ready_to_read:
+                line = process.stdout.readline().strip()
+                if line:
+                    sys.stdout.write(f"\r{line} 🔍 Chaves detectadas: {count_keys} | Tempo: {time_formatted}")
+                    sys.stdout.flush()
+
+            if count_keys == 10:
+                print(f"Chaves privadas encontradas: {count_private_keys()}")
+                process.terminate()
+                break
+            time.sleep(10)
+        
+        process.wait()
+
 
     except subprocess.CalledProcessError as e:
         print(f"Erro ao executar o programa: {e}")
+
     except Exception as e:
         print(f"Erro inesperado: {e}")
 
@@ -114,9 +144,17 @@ def process_out_file(out_file="out.txt", in_file="in.txt", additional_address=AD
         for line in file:
             line.strip()
             current_address = line.split(" ")[0].strip()  # Obtém o address key
-            private_key = pad_private_key(line.split(" ")[1].strip())  # Obtém a private key
-            if current_address and private_key:
-                private_keys.append(private_key)
+            private_key = line.split(" ")[1].strip()
+
+            private_key_pad = pad_private_key(private_key)  # Obtém a private key
+
+            validate_addr = validate_private_key(private_key, current_address)
+            if not validate_addr:
+                return True
+
+            # Verificar se a chave privada pertence a um dos endereços
+            if current_address and private_key_pad:
+                private_keys.append(private_key_pad)
             if current_address == additional_address:
                 found_additional_address = True
                 private_key_additional_addr = private_key
@@ -126,7 +164,7 @@ def process_out_file(out_file="out.txt", in_file="in.txt", additional_address=AD
         print(f"Chave encontrada: {private_key_additional_addr}")
         return True
 
-    # post_private_keys(private_keys)
+    post_private_keys(private_keys)
 
 if __name__ == "__main__":
     while True:
